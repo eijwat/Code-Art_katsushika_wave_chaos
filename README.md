@@ -12,6 +12,8 @@
 
 秩序と混沌の境界。その薄い膜の上で、すべての複雑さが生まれる。生命も、意識も、美も。
 
+まずは、みてみよう。[GitHub Pages](https://eijwat.github.io/Code-Art_katsushika_wave_chaos/)
+
 ---
 
 ## 三つの数学
