@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>葛飾の波 — 混沌の縁 | Katsushika Wave: Edge of Chaos</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@200;300;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #050810;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Noto Serif JP', serif;
+    color: #c8d0dc;
+    overflow: hidden;
+  }
+
+  h1 {
+    font-weight: 200;
+    font-size: clamp(18px, 3vw, 28px);
+    letter-spacing: 0.2em;
+    color: #7a8faa;
+    margin-bottom: 6px;
+    opacity: 0;
+    animation: fadeIn 3s ease 0.5s forwards;
+  }
+
+  .subtitle {
+    font-size: clamp(10px, 1.3vw, 13px);
+    color: #2e3d52;
+    letter-spacing: 0.5em;
+    margin-bottom: 20px;
+    opacity: 0;
+    animation: fadeIn 3s ease 1.2s forwards;
+  }
+
+  canvas { display: block; border-radius: 3px; opacity: 0; animation: fadeIn 2s ease 0.2s forwards; }
+
+  .controls {
+    display: flex;
+    gap: 18px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    animation: fadeIn 2s ease 2s forwards;
+  }
+
+  .controls label {
+    font-size: 11px;
+    font-weight: 300;
+    color: #2e3d52;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 0.12em;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 80px; height: 1px; background: #1a2030; outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #4a6a8a; cursor: pointer; transition: background 0.3s;
+  }
+  input[type="range"]::-webkit-slider-thumb:hover { background: #8ba4c4; }
+
+  button {
+    background: transparent; border: 1px solid #1a2030; color: #3a5570;
+    padding: 5px 14px; font-family: 'Noto Serif JP', serif; font-weight: 300;
+    font-size: 11px; letter-spacing: 0.2em; cursor: pointer;
+    border-radius: 2px; transition: all 0.5s ease;
+  }
+  button:hover { border-color: #4a6a8a; color: #8ba4c4; }
+
+  #emotion-label {
+    position: fixed; bottom: 20px; left: 24px;
+    font-size: 11px; font-weight: 200; color: #2a3648;
+    letter-spacing: 0.3em; opacity: 0; animation: fadeIn 3s ease 4s forwards;
+    transition: color 3s ease;
+  }
+
+  #chaos-meter {
+    position: fixed; top: 20px; right: 24px;
+    font-size: 10px; font-weight: 200; color: #1e2a3a;
+    letter-spacing: 0.2em; text-align: right;
+    opacity: 0; animation: fadeIn 3s ease 5s forwards;
+    line-height: 1.8;
+  }
+
+  .poem {
+    position: fixed; bottom: 20px; right: 24px;
+    font-size: 11px; font-weight: 200; color: #161e2a;
+    writing-mode: vertical-rl; letter-spacing: 0.5em; line-height: 2;
+    opacity: 0; animation: fadeIn 4s ease 6s forwards;
+  }
+
+  @keyframes fadeIn { to { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<h1>葛飾の波 — 混沌の縁</h1>
+<div class="subtitle">EDGE OF CHAOS</div>
+<canvas id="c"></canvas>
+<div class="controls">
+  <button onclick="resetCanvas()">再 帰</button>
+  <label>息 <input type="range" min="0.2" max="3" step="0.1" value="1" id="speed"></label>
+  <label>記 憶 <input type="range" min="0.80" max="0.99" step="0.01" value="0.93" id="fade"></label>
+  <label>絆 <input type="range" min="0" max="1" step="0.05" value="0.4" id="bonds"></label>
+  <label>混 沌 <input type="range" min="0" max="1" step="0.01" value="0.5" id="chaos"></label>
+</div>
+
+<div id="emotion-label"></div>
+<div id="chaos-meter"></div>
+<div class="poem">決定論の海に<br>自由意志の泡が立つ<br>すべては書かれていた<br>だが誰も読めない</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const emotionLabel = document.getElementById('emotion-label');
+const chaosMeter = document.getElementById('chaos-meter');
+const dpr = window.devicePixelRatio || 1;
+let W, H, particles, ghosts, blooms, tendrils, t, raf;
+
+const paletteCosmos = [
+  [120, 40, 160], [60, 20, 100], [30, 10, 60],
+  [10, 60, 120], [20, 100, 160], [5, 30, 80],
+  [160, 60, 80], [200, 100, 60],
+];
+const paletteOrder = [
+  [4, 44, 83], [15, 110, 86], [31, 158, 117],
+  [55, 138, 221], [239, 159, 39], [250, 238, 218],
+  [8, 80, 65], [113, 43, 19],
+];
+const paletteChaos = [
+  [200, 30, 60], [240, 80, 40], [255, 160, 20],
+  [180, 10, 80], [120, 200, 255], [255, 220, 100],
+  [60, 10, 40], [255, 100, 60],
+];
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpC(a, b, t) { return [Math.round(lerp(a[0],b[0],t)), Math.round(lerp(a[1],b[1],t)), Math.round(lerp(a[2],b[2],t))]; }
+
+function getPalette(chaos, emotion) {
+  const p = [];
+  for (let i = 0; i < paletteOrder.length; i++) {
+    let base = chaos < 0.5
+      ? lerpC(paletteOrder[i], paletteCosmos[i], chaos * 2)
+      : lerpC(paletteCosmos[i], paletteChaos[i], (chaos - 0.5) * 2);
+    if (emotion < 0) {
+      base = lerpC(base, [base[0]*0.3, base[1]*0.3, Math.min(255, base[2]*0.5+60)], -emotion * 0.5);
+    } else if (emotion > 0) {
+      base = lerpC(base, [Math.min(255, base[0]+60), Math.min(255, base[1]+30), base[2]], emotion * 0.3);
+    }
+    p.push(base);
+  }
+  return p;
+}
+
+// --- Strange attractor (modified Lorenz projected to 2D) ---
+let ax = 0.1, ay = 0.1, az = 0.1;
+const sigma = 10, rho = 28, beta = 8/3;
+
+function stepAttractor(dt) {
+  const dx = sigma * (ay - ax);
+  const dy = ax * (rho - az) - ay;
+  const dz = ax * ay - beta * az;
+  ax += dx * dt; ay += dy * dt; az += dz * dt;
+}
+
+function attractorField(nx, ny, chaosLevel) {
+  const scale = 0.02 + chaosLevel * 0.03;
+  const px = (nx - 0.5) * 60;
+  const py = (ny - 0.5) * 60;
+  const distToAttractor = Math.sqrt((px - ax) ** 2 + (py - ay) ** 2);
+  const influence = Math.exp(-distToAttractor * 0.02) * chaosLevel;
+  const fieldX = (ax - px) * scale * influence + Math.sin(py * 0.1 + az * 0.05) * chaosLevel;
+  const fieldY = (ay - py) * scale * influence + Math.cos(px * 0.1 - az * 0.05) * chaosLevel;
+  return [fieldX, fieldY];
+}
+
+// --- Julia set escape test (for fractal boundary detection) ---
+function juliaEscape(cx, cy, maxIter) {
+  let zx = cx, zy = cy;
+  const jcx = -0.7 + Math.sin(t * 0.01) * 0.15;
+  const jcy = 0.27015 + Math.cos(t * 0.013) * 0.1;
+  for (let i = 0; i < maxIter; i++) {
+    const tmp = zx * zx - zy * zy + jcx;
+    zy = 2 * zx * zy + jcy;
+    zx = tmp;
+    if (zx * zx + zy * zy > 4) return i / maxIter;
+  }
+  return 1;
+}
+
+function fractalDensity(nx, ny) {
+  const cx = (nx - 0.5) * 3.5;
+  const cy = (ny - 0.5) * 2.5;
+  return juliaEscape(cx, cy, 20);
+}
+
+// --- Lyapunov exponent estimate ---
+let lyapunov = 0;
+let lyapunovSmooth = 0;
+
+function sz() {
+  W = Math.min(window.innerWidth - 40, 960);
+  H = Math.min(W * 0.618, 520);
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+let emotion = 0, emotionTarget = 0, birthCount = 0, deathCount = 0;
+const emotionNames = [
+  { range: [-1, -0.6], ja: '虚　無' },
+  { range: [-0.6, -0.3], ja: '混　迷' },
+  { range: [-0.3, -0.1], ja: '揺　蕩' },
+  { range: [-0.1, 0.1], ja: '均　衡' },
+  { range: [0.1, 0.3], ja: '胎　動' },
+  { range: [0.3, 0.6], ja: '躍　動' },
+  { range: [0.6, 1], ja: '超　越' },
+];
+
+class Ghost {
+  constructor(x, y, color, size, chaotic) {
+    this.x = x; this.y = y; this.color = color; this.size = size;
+    this.life = 0; this.maxLife = 50 + Math.random() * 80;
+    this.chaotic = chaotic;
+    this.angle = Math.random() * Math.PI * 2;
+    this.spin = (Math.random() - 0.5) * 0.1 * (chaotic ? 3 : 1);
+  }
+  update() {
+    this.life++;
+    if (this.chaotic) {
+      this.x += Math.cos(this.angle) * 0.8;
+      this.y += Math.sin(this.angle) * 0.8;
+      this.angle += this.spin;
+    } else {
+      this.y -= 0.3;
+      this.x += Math.sin(this.life * 0.05) * 0.2;
+    }
+    return this.life < this.maxLife;
+  }
+  draw() {
+    const age = this.life / this.maxLife;
+    const a = (1 - age) * (this.chaotic ? 0.4 : 0.25);
+    const [r, g, b] = this.color;
+    const s = this.size * (this.chaotic ? (1 + age * 3) : (1 + age * 2));
+    ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
+    ctx.fill();
+    if (this.chaotic && age < 0.5) {
+      ctx.strokeStyle = `rgba(${r},${g},${b},${a * 0.3})`;
+      ctx.lineWidth = 0.3;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, s * 2, this.angle, this.angle + Math.PI * 0.7);
+      ctx.stroke();
+    }
+  }
+}
+
+class Bloom {
+  constructor(x, y, intensity) {
+    this.x = x; this.y = y;
+    this.life = 0; this.maxLife = 35 + Math.random() * 25;
+    this.intensity = intensity;
+  }
+  update() { this.life++; return this.life < this.maxLife; }
+  draw() {
+    const age = this.life / this.maxLife;
+    const r = 4 + age * 30 * this.intensity;
+    const a = (1 - age) * 0.1 * this.intensity;
+    ctx.strokeStyle = `rgba(250,230,180,${a})`;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+class Tendril {
+  constructor(x, y, color) {
+    this.points = [{x, y}];
+    this.color = color;
+    this.life = 0;
+    this.maxLife = 30 + Math.random() * 50;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2;
+  }
+  update(chaosLevel) {
+    this.life++;
+    const last = this.points[this.points.length - 1];
+    const [fx, fy] = attractorField(last.x / W, last.y / H, chaosLevel);
+    this.vx += fx * 0.5; this.vy += fy * 0.5;
+    this.vx *= 0.95; this.vy *= 0.95;
+    this.points.push({ x: last.x + this.vx, y: last.y + this.vy });
+    if (this.points.length > 40) this.points.shift();
+    return this.life < this.maxLife;
+  }
+  draw() {
+    if (this.points.length < 2) return;
+    const age = this.life / this.maxLife;
+    const a = (1 - age) * 0.15;
+    const [r, g, b] = this.color;
+    ctx.strokeStyle = `rgba(${r},${g},${b},${a})`;
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(this.points[0].x, this.points[0].y);
+    for (let i = 1; i < this.points.length; i++) {
+      ctx.lineTo(this.points[i].x, this.points[i].y);
+    }
+    ctx.stroke();
+  }
+}
+
+class Particle {
+  constructor() { this.reset(true); }
+  reset(silent) {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.prevX = this.x; this.prevY = this.y;
+    this.vx = 0; this.vy = 0;
+    this.life = 0;
+    this.maxLife = 180 + Math.random() * 500;
+    this.colorIndex = Math.floor(Math.random() * paletteOrder.length);
+    this.size = 0.4 + Math.random() * 2.2;
+    this.phase = Math.random() * Math.PI * 2;
+    this.born = !silent;
+    this.divergence = 0;
+    if (!silent) birthCount++;
+  }
+  update(dt, pal, chaosLevel) {
+    const sp = parseFloat(document.getElementById('speed').value);
+    const nx = this.x / W;
+    const ny = this.y / H;
+
+    // --- Wave field (from Emergence) ---
+    const wave1 = Math.sin(nx * 6.28 + t * 0.7 * sp + this.phase) * 0.8;
+    const wave2 = Math.cos(ny * 4.2 - t * 0.5 * sp) * 0.6;
+    const wave3 = Math.sin((nx + ny) * 8 + t * 0.3 * sp) * 0.4;
+    const bigWave = Math.sin(nx * 2 - t * 0.15 * sp) * (1 - ny) * 3;
+
+    // --- Attractor field (Chaos) ---
+    const [afx, afy] = attractorField(nx, ny, chaosLevel);
+
+    // --- Fractal boundary ---
+    const frac = fractalDensity(nx, ny);
+    const onBoundary = frac > 0.1 && frac < 0.9;
+    const fractalPull = onBoundary ? (frac - 0.5) * chaosLevel * 2 : 0;
+
+    // --- Blend wave and chaos ---
+    const waveWeight = 1 - chaosLevel * 0.7;
+    const chaosWeight = chaosLevel;
+
+    const fx = (wave1 + wave3 * 0.5 + bigWave * 0.3) * waveWeight
+             + afx * chaosWeight * 1.5
+             + fractalPull * Math.cos(t * sp + this.phase) * 0.5;
+    const fy = (wave2 - wave3 * 0.3 - Math.abs(bigWave) * 0.5 + (0.3 - ny) * 0.4) * waveWeight
+             + afy * chaosWeight * 1.5
+             + fractalPull * Math.sin(t * sp + this.phase) * 0.5;
+
+    // --- Samsara emotions ---
+    const joyLift = emotion > 0 ? emotion * Math.sin(t * sp + this.phase) * 0.4 : 0;
+    const sorrowSink = emotion < 0 ? emotion * 0.25 : 0;
+    const sorrowDrag = emotion < 0 ? 1 + (-emotion) * 0.25 : 1;
+
+    this.prevX = this.x; this.prevY = this.y;
+    this.vx += (fx + joyLift * 0.3) * 0.15;
+    this.vy += (fy + sorrowSink) * 0.15;
+    this.vx *= 0.92 / sorrowDrag;
+    this.vy *= 0.92 / sorrowDrag;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.life += dt;
+
+    // Track divergence for Lyapunov
+    const dx = this.x - this.prevX;
+    const dy = this.y - this.prevY;
+    this.divergence = Math.sqrt(dx * dx + dy * dy);
+
+    this.color = pal[this.colorIndex];
+    this.fracVal = frac;
+    this.onBoundary = onBoundary;
+
+    if (this.life > this.maxLife || this.x < -30 || this.x > W + 30 || this.y < -30 || this.y > H + 30) {
+      const chaotic = chaosLevel > 0.4 && this.onBoundary;
+      ghosts.push(new Ghost(this.x, this.y, this.color, this.size, chaotic));
+      if (chaotic && Math.random() < 0.3) {
+        tendrils.push(new Tendril(this.x, this.y, this.color));
+      }
+      deathCount++;
+      this.reset(false);
+      return true;
+    }
+    return false;
+  }
+  draw(chaosLevel) {
+    const age = this.life / this.maxLife;
+    let alpha;
+    if (age < 0.05) alpha = age / 0.05;
+    else if (age > 0.75) {
+      alpha = (1 - age) / 0.25;
+      if (this.onBoundary && chaosLevel > 0.3) {
+        alpha *= 0.5 + 0.5 * Math.sin(this.life * 0.5 + this.phase);
+      } else {
+        alpha = Math.max(0, alpha + Math.sin(this.life * 0.3) * 0.2 * (1 - alpha));
+      }
+    } else alpha = 1;
+
+    const breathe = 0.7 + 0.3 * Math.sin(this.life * 0.02 + this.phase);
+    const a = Math.min(1, alpha * breathe * 0.85);
+    const [r, g, b] = this.color;
+
+    let s = this.size * (0.8 + 0.4 * Math.sin(age * Math.PI));
+    if (age < 0.05) s *= (0.5 + age / 0.05 * 0.5);
+
+    // Fractal boundary shimmer
+    if (this.onBoundary && chaosLevel > 0.2) {
+      const shimmer = Math.sin(this.life * 0.8 + this.fracVal * 20) * 0.3;
+      s *= 1 + shimmer * chaosLevel;
+      // Bifurcation echo
+      if (Math.random() < chaosLevel * 0.1) {
+        ctx.fillStyle = `rgba(${Math.min(255,r+60)},${Math.min(255,g+40)},${Math.min(255,b+30)},${a * 0.2})`;
+        ctx.beginPath();
+        ctx.arc(this.x + (Math.random()-0.5)*8, this.y + (Math.random()-0.5)*8, s*0.6, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = `rgba(${r},${g},${b},${a})`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Birth glow
+    if (this.born && age < 0.08) {
+      const ba = (1 - age / 0.08) * 0.15;
+      ctx.strokeStyle = `rgba(255,245,220,${ba})`;
+      ctx.lineWidth = 0.3;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, s + 4 + age * 50, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawBonds(pal, chaosLevel) {
+  const bondStrength = parseFloat(document.getElementById('bonds').value);
+  if (bondStrength < 0.05) return;
+  const threshold = 28 + bondStrength * 28;
+  const maxBonds = Math.floor(70 * bondStrength);
+  let drawn = 0;
+  const step = Math.max(1, Math.floor(particles.length / 280));
+  for (let i = 0; i < particles.length && drawn < maxBonds; i += step) {
+    const p1 = particles[i];
+    for (let j = i + step; j < particles.length && drawn < maxBonds; j += step) {
+      const p2 = particles[j];
+      const dx = p1.x - p2.x;
+      const dy = p1.y - p2.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < threshold && dist > 3) {
+        const a = (1 - dist / threshold) * 0.12 * bondStrength;
+        const mc = lerpC(p1.color, p2.color, 0.5);
+        ctx.strokeStyle = `rgba(${mc[0]},${mc[1]},${mc[2]},${a})`;
+        ctx.lineWidth = chaosLevel > 0.5 && (p1.onBoundary || p2.onBoundary) ? 0.6 : 0.3;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        if (chaosLevel > 0.3 && (p1.onBoundary || p2.onBoundary)) {
+          const mx = (p1.x + p2.x) / 2 + (Math.random() - 0.5) * 10 * chaosLevel;
+          const my = (p1.y + p2.y) / 2 + (Math.random() - 0.5) * 10 * chaosLevel;
+          ctx.quadraticCurveTo(mx, my, p2.x, p2.y);
+        } else {
+          ctx.lineTo(p2.x, p2.y);
+        }
+        ctx.stroke();
+        drawn++;
+      }
+    }
+  }
+}
+
+function drawFractalGhost(chaosLevel) {
+  if (chaosLevel < 0.15) return;
+  const a = chaosLevel * 0.03;
+  const step = Math.max(8, Math.round(24 - chaosLevel * 16));
+  for (let px = 0; px < W; px += step) {
+    for (let py = 0; py < H; py += step) {
+      const f = fractalDensity(px / W, py / H);
+      if (f > 0.2 && f < 0.85) {
+        const fa = a * (1 - Math.abs(f - 0.5) * 2);
+        const hue = f * 300 + t * 10;
+        const sr = Math.round(80 + Math.sin(hue * 0.017) * 60);
+        const sg = Math.round(40 + Math.cos(hue * 0.013) * 40);
+        const sb = Math.round(120 + Math.sin(hue * 0.023) * 80);
+        ctx.fillStyle = `rgba(${sr},${sg},${sb},${fa})`;
+        ctx.fillRect(px, py, step * 0.8, step * 0.8);
+      }
+    }
+  }
+}
+
+let lastEmotionUpdate = 0;
+
+function resetCanvas() {
+  t = 0; emotion = 0; emotionTarget = 0;
+  birthCount = 0; deathCount = 0;
+  lyapunov = 0; lyapunovSmooth = 0;
+  ax = 0.1; ay = 0.1; az = 0.1;
+  particles = []; ghosts = []; blooms = []; tendrils = [];
+  for (let i = 0; i < 2000; i++) particles.push(new Particle());
+  ctx.fillStyle = '#050810';
+  ctx.fillRect(0, 0, W, H);
+}
+
+function loop() {
+  const fade = parseFloat(document.getElementById('fade').value);
+  const chaosLevel = parseFloat(document.getElementById('chaos').value);
+  const sp = parseFloat(document.getElementById('speed').value);
+
+  stepAttractor(0.005 * sp);
+
+  const bgR = Math.round(5 + chaosLevel * 8 + (emotion > 0 ? emotion * 6 : 0));
+  const bgG = Math.round(8 + chaosLevel * 2 + (emotion > 0 ? emotion * 3 : emotion * 2));
+  const bgB = Math.round(16 + chaosLevel * 12 + (emotion < 0 ? -emotion * 8 : 0));
+  ctx.fillStyle = `rgba(${bgR},${bgG},${bgB},${1 - fade})`;
+  ctx.fillRect(0, 0, W, H);
+
+  t += 0.016;
+
+  drawFractalGhost(chaosLevel);
+
+  const cycle = Math.sin(t * 0.04) * 0.3 + Math.sin(t * 0.017) * 0.35 + Math.sin(t * 0.071) * 0.2;
+  if (t - lastEmotionUpdate > 0.5) {
+    const lifeBalance = (birthCount - deathCount) / Math.max(1, birthCount + deathCount);
+    const chaosFeel = (lyapunovSmooth - 1) * 0.2;
+    emotionTarget = cycle * 0.5 + lifeBalance * 0.2 + chaosFeel * 0.3;
+    emotionTarget = Math.max(-1, Math.min(1, emotionTarget));
+    lastEmotionUpdate = t;
+    birthCount = Math.floor(birthCount * 0.8);
+    deathCount = Math.floor(deathCount * 0.8);
+  }
+  emotion += (emotionTarget - emotion) * 0.008;
+
+  const pal = getPalette(chaosLevel, emotion);
+
+  let totalDiv = 0;
+  let newBirths = [];
+  for (const p of particles) {
+    p.update(1, pal, chaosLevel);
+    totalDiv += p.divergence;
+    if (p.born && p.life < 3) newBirths.push(p);
+  }
+  lyapunov = totalDiv / particles.length;
+  lyapunovSmooth += (lyapunov - lyapunovSmooth) * 0.02;
+
+  for (let i = 0; i < newBirths.length; i++) {
+    for (let j = i + 1; j < newBirths.length; j++) {
+      const dx = newBirths[i].x - newBirths[j].x;
+      const dy = newBirths[i].y - newBirths[j].y;
+      if (dx * dx + dy * dy < 2000) {
+        blooms.push(new Bloom(
+          (newBirths[i].x + newBirths[j].x) / 2,
+          (newBirths[i].y + newBirths[j].y) / 2,
+          1 + chaosLevel
+        ));
+      }
+    }
+  }
+
+  drawBonds(pal, chaosLevel);
+  for (const p of particles) p.draw(chaosLevel);
+
+  ghosts = ghosts.filter(g => { g.draw(); return g.update(); });
+  blooms = blooms.filter(b => { b.draw(); return b.update(); });
+  tendrils = tendrils.filter(td => { td.draw(); return td.update(chaosLevel); });
+
+  if (Math.random() < 0.02 + (emotion > 0 ? emotion * 0.02 : 0)) {
+    const fx = Math.random() * W;
+    const fy = Math.random() * H * 0.4;
+    ctx.fillStyle = `rgba(250,238,218,${0.2 + emotion * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(fx, fy, 1 + Math.random() * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const en = emotionNames.find(e => emotion >= e.range[0] && emotion < e.range[1]);
+  if (en) {
+    emotionLabel.textContent = en.ja;
+    const warmth = Math.round(30 + (emotion + 1) * 15);
+    const hue = emotion < 0 ? 250 + emotion * 30 : 250 - emotion * 200;
+    emotionLabel.style.color = `hsl(${hue}, 30%, ${warmth}%)`;
+  }
+
+  const lyaDisplay = lyapunovSmooth.toFixed(3);
+  const chaosDesc = lyapunovSmooth < 0.8 ? '秩序' : lyapunovSmooth < 1.5 ? '縁' : lyapunovSmooth < 2.5 ? '遷移' : '混沌';
+  chaosMeter.innerHTML = `λ ${lyaDisplay}<br>${chaosDesc}`;
+
+  raf = requestAnimationFrame(loop);
+}
+
+sz();
+window.addEventListener('resize', () => { sz(); resetCanvas(); });
+resetCanvas();
+loop();
+</script>
+</body>
+</html>
